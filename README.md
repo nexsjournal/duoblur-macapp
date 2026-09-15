@@ -64,6 +64,37 @@ make clean
 `make run` 会经 LaunchServices 启动。直接跑 `.build/` 里的裸二进制不会触发系统权限弹窗，
 所以别绕过 `open`。
 
+## 下载安装（给使用者）
+
+到 [Releases](../../releases) 下载最新的 `DuoBlur-<版本>.dmg`：
+
+1. 打开 DMG，把 **DuoBlur** 拖进「应用程序」；
+2. **首次打开**：右键（或按住 Control 点击）DuoBlur 图标 →「打开」→ 弹窗里再点一次「打开」。
+   （也可以在「系统设置 → 隐私与安全性」页面下方点「仍要打开」。这是 macOS 对未公证应用的统一提示，只需一次。）
+3. 授予两项权限（各一次）：**屏幕录制**（系统设置 → 隐私与安全性 → 屏幕录制与系统录音）与
+   **运动与健身**（点面板上的「开始」时会弹系统授权框），授权后**退出并重新打开** DuoBlur；
+4. 戴上 AirPods → 点「开始（监听 + 屏幕效果）」。
+
+> 应用为 **Developer ID 签名、未公证**：签名链完整（可在「系统设置 → 隐私与安全性」核对开发者身份），
+> 首次打开需要手动放行一次；之后升级版本无需再放行，权限也不会丢。
+
+## 构建（给开发者）
+
+```bash
+make app             # 构建 + 打包 + 签名 → build/DuoBlur.app
+make run             # 构建并启动（必须经 LaunchServices，否则 TCC 弹窗不出现）
+make test            # 单元 + 属性测试
+make ship            # 出分发用 DMG（通用二进制 + Developer ID 签名；配好公证凭据则一并公证）
+make signing-status  # 体检：签名身份 / 公证凭据 / 下一步命令
+```
+
+`make dmg` 产出 `build/DuoBlur-<版本>.dmg`，内含应用、`Applications` 软链和面向使用者的 `安装说明.txt`。
+首次开发需要一次性创建自签名代码签名证书，避免每次重建后系统授权失效 —— 在「钥匙串访问 → 证书助理 → 创建证书…」里：
+名称 `DuoBlur Dev`、身份类型「自签名根证书」、证书类型「代码签名」、3650 天；建好后 `make app` 会自动使用它
+（找不到时退回 adhoc 并给出提示）。
+把包发给别人则需要 **Developer ID Application 证书**（付费 Apple Developer Program 团队），
+配置方式：`make signing-status` 会打印缺什么。
+
 ## 使用
 
 启动后应用常驻菜单栏（不显示 Dock 图标）。菜单项：
