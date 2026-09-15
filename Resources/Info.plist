@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.duoblur.app</string>
+	<key>CFBundleName</key>
+	<string>DuoBlur</string>
+	<key>CFBundleDisplayName</key>
+	<string>DuoBlur</string>
+	<key>CFBundleExecutable</key>
+	<string>DuoBlur</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<!-- 菜单栏应用：不显示 Dock 图标 -->
+	<key>LSUIElement</key>
+	<true/>
+	<!-- 应用图标（由 `make icon` 从 Resources/Assets/AppIcon.iconset 生成 .icns） -->
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<!--
+	  NSMotionUsageDescription 是必需项：缺这个键，运动与健身权限会被系统直接拒绝，
+	  且不会给出任何解释。这是开发期最容易掉进去的坑。
+	-->
+	<key>NSMotionUsageDescription</key>
+	<string>DuoBlur 需要读取 AirPods 的头部姿态，以便在你转头时把屏幕内容折叠模糊。</string>
+	<!-- 屏幕录制走 TCC 自动弹窗，这个键不是官方文档化的必需项，写上无害且有助于说明用途。 -->
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>DuoBlur 需要读取屏幕内容并在本机生成折页模糊效果。画面不保存、不上传、不离开这台 Mac。</string>
+</dict>
+</plist>

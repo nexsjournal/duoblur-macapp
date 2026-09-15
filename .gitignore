@@ -1,0 +1,19 @@
+# --- 构建产物 ---
+.build/
+build/
+*.air
+*.metallib
+
+# --- 本地覆盖（签名身份等） ---
+Makefile.local
+
+# --- macOS ---
+.DS_Store
+
+# --- Xcode ---
+xcuserdata/
+*.xcuserstate
+
+# --- 本地工作区（不对外发布） ---
+docs/
+referimg/

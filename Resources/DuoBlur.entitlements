@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  DuoBlur 不需要任何 entitlement。
+	  · 运动与健身：只需要 Info.plist 里的 NSMotionUsageDescription + TCC 授权
+	  · 屏幕录制：只需要 TCC 授权
+	  · 全局热键：Carbon RegisterEventHotKey 免权限
+	  · com.apple.developer.coremotion.head-pose 是给 Apple 音频渲染器路径用的
+	    （受限 entitlement，需 Apple 审批）；我们不经过那条路径，因此不需要。
+	  这个文件存在的意义：① 显式声明"确实不需要"；② 将来若要加时有个固定位置。
+	-->
+</dict>
+</plist>
