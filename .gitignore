@@ -16,4 +16,5 @@ xcuserdata/
 
 # --- 本地工作区（不对外发布） ---
 docs/
-referimg/
+referimg/*
+!referimg/demo.gif

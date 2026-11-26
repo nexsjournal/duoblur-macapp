@@ -1,12 +1,32 @@
 # DuoBlur
 
-> 戴上 AirPods，转头时屏幕内容按折叠屏的"折页"方式从一侧卷起模糊，转回正视恢复清晰。
+**戴上 AirPods，转头就把屏幕"折"起来。**
+
+<p align="center">
+  <img src="referimg/demo.gif" width="760"
+       alt="DuoBlur 演示：戴上 AirPods 转头，屏幕按折叠屏的折页方式从一侧卷起模糊，转回正视恢复清晰">
+</p>
+
+<p align="center">
+  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white">
+  <img alt="Metal" src="https://img.shields.io/badge/Metal-render-4A4A4A?style=flat-square">
+  <img alt="零依赖" src="https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square">
+  <img alt="Release" src="https://img.shields.io/github/v/release/nexsjournal/duoblur-macapp?style=flat-square&color=blue">
+</p>
 
 一个 macOS 菜单栏常驻应用。读取 AirPods 的头部姿态，把头的左右转动映射为"折叠量"，
-用 Metal 渲染一层覆盖全屏的渐进模糊。
+用 Metal 渲染一层覆盖全屏的渐进模糊：头转开，屏幕从背离视线的一侧卷起；头转回，恢复清晰。
+
+- **跟着头走** —— 折痕位置、渐进曲线、折痕高光与掠射变暗全部随头部姿态实时联动。
+- **随时可调** —— 四套预设、三档响应度，其余参数都能在控制面板里逐项调整。
+- **克制** —— 菜单栏常驻，零第三方依赖、零网络访问；捕获帧只在内存与 GPU 纹理中，处理完即丢。
 
 技术栈：Swift 6 + SwiftPM + AppKit/SwiftUI + Metal + ScreenCaptureKit + CoreMotion。
-**零第三方依赖，零网络访问。**
+
+*A macOS menu bar app that turns AirPods head motion into a foldable-screen style blur.*
+
+[下载最新版 DMG](../../releases/latest) · [从源码构建](#构建) · [使用说明](#使用)
 
 ---
 
