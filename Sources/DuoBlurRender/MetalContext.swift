@@ -201,7 +201,9 @@ public struct FoldUniforms: Sendable, Equatable {
     public var grazingStrength: Float = 0.2
     public var reflection: Float = 1
     public var topInsetPx: Float = 0
-    public var sigmaPerLevel: Float = 0.9
+    /// 实测标定值，见 `FoldParameters.sigmaPerLevel`。这里的字面量只是"还没从参数填充时"的
+    /// 占位，实际渲染总是由 `init(parameters:...)` 覆盖。
+    public var sigmaPerLevel: Float = 0.29
     public var captureUVScaleX: Float = 1
     public var captureUVScaleY: Float = 1
     public var captureUVOffsetX: Float = 0

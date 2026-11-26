@@ -50,7 +50,8 @@ public final class FoldRenderer {
 
     private var pyramid: MTLTexture?
     private var pyramidPixelSize: CGSize = .zero
-    public private(set) var pyramidLevels: Int = 10
+    /// 实际使用的层数。初值只是占位，`ensurePyramid` 会按 uniforms 与纹理尺寸夹定。
+    public private(set) var pyramidLevels: Int = 1
     private let stats = RenderStats()
 
     /// 诊断计数

@@ -56,7 +56,7 @@ NOTARY_PROFILE  ?= duoblur-notary
 METAL_SOURCES := $(wildcard Sources/DuoBlurRender/Shaders/*.metal)
 METALLIB      := $(BUILD_DIR)/default.metallib
 
-.PHONY: all app compile metallib icon run test tcc reset-tcc clean help \
+.PHONY: all app compile metallib icon run test tcc reset-tcc clean help sigma-calibrate \
         release dmg ship verify-release notary-setup notary-setup-key notarize signing-status
 
 all: app
@@ -307,6 +307,13 @@ run: app
 
 test:
 	swift test
+
+# σ 标定（M1.3）：用真实着色器量"请求的模糊半径"与"实际渲染出的模糊"是否一致。
+# 换 GPU / 升级系统 / 改动预过滤后都应重跑；断言版本已固化为 swift test --filter SigmaCalibrationTests。
+sigma-calibrate: | $(BUILD_DIR)
+	@echo "==> σ 标定（需已 make metallib；否则会退回运行时编译着色器）"
+	@swiftc -O tools/sigma-calibrate.swift -o $(BUILD_DIR)/sigma-calibrate
+	@$(BUILD_DIR)/sigma-calibrate
 
 tcc:
 	@echo "--- 本应用的 TCC 记录 ---"

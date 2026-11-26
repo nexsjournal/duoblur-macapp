@@ -29,6 +29,9 @@ let package = Package(
 
         .testTarget(name: "DuoBlurCoreTests", dependencies: ["DuoBlurCore"]),
         .testTarget(name: "DuoBlurMotionTests", dependencies: ["DuoBlurMotion", "DuoBlurCore"]),
+        // 渲染层测试：σ 标定（T-3.2）与黄金图像。需要 Metal 设备；没有设备的机器上会跳过，
+        // 而不是失败——否则纯逻辑开发的机器（或某些 CI）会被无关原因卡住。
+        .testTarget(name: "DuoBlurRenderTests", dependencies: ["DuoBlurRender", "DuoBlurCore"]),
     ],
     // 严格并发：这个项目横跨传感器回调线程 / 渲染线程 / 主线程，数据竞争检查是刚需。
     swiftLanguageModes: [.v6]

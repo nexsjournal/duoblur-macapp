@@ -171,11 +171,13 @@ final class FoldParametersTests: XCTestCase {
             hingeLine: Double, rim: Double, grazing: Double, frost: Double?
         )
 
+        // maxRadiusPt 在 2026-09-15 的 σ 标定后按实测比例 0.32 缩放（见 FoldPresets 的文档），
+        // 使"修正 sigmaPerLevel 常数"不改变已验收的渲染结果。
         let expected: [FoldPreset: Expected] = [
-            .duoSweep:   (.sweep,   125, 0.0,  0.85, 1.25, 0.5,  0.55, 0.0,  0.035, 0.025, 0.10, nil),
-            .duoClassic: (.ramp,    125, 0.0,  0.85, 1.25, 0.5,  0.55, 0.0,  0.035, 0.025, 0.10, nil),
-            .frost:      (.uniform,  90, 0.0,  1.00, 1.00, 0.4,  1.00, 0.0,  0.0,   0.0,   0.08, 0.0),
-            .cinematic:  (.sweep,   160, 0.25, 0.80, 1.10, 0.7,  0.45, 0.18, 0.035, 0.045, 0.15, nil),
+            .duoSweep:   (.sweep,    40, 0.0,  0.85, 1.25, 0.5,  0.55, 0.0,  0.035, 0.025, 0.10, nil),
+            .duoClassic: (.ramp,     40, 0.0,  0.85, 1.25, 0.5,  0.55, 0.0,  0.035, 0.025, 0.10, nil),
+            .frost:      (.uniform,  29, 0.0,  1.00, 1.00, 0.4,  1.00, 0.0,  0.0,   0.0,   0.08, 0.0),
+            .cinematic:  (.sweep,    51, 0.25, 0.80, 1.10, 0.7,  0.45, 0.18, 0.035, 0.045, 0.15, nil),
         ]
 
         for (preset, e) in expected {
@@ -328,5 +330,102 @@ final class FoldParametersTests: XCTestCase {
         XCTAssertEqual(p.equivalentHingeAngleDeg(amount: 0), 176, accuracy: 1e-9)
         XCTAssertEqual(p.equivalentHingeAngleDeg(amount: 1), 20, accuracy: 1e-9)
         XCTAssertEqual(p.equivalentHingeAngleDeg(amount: 0.5), 98, accuracy: 1e-9)
+    }
+
+    // MARK: - σ 标定常数与层数推导（M1.3）
+
+    /// 校准常数必须是实测标定值，且落在合法范围内。
+    ///
+    /// 这条测试的作用是**防止常量被无声改回估计值**：0.90 那个未标定的数字曾让
+    /// 实际模糊半径只有请求值的 0.32 倍，且连续三次"简化标定"都没能发现。
+    /// 改动这个数字必须同时更新 `FoldParameters` 的实测表和 docs/08 的记录。
+    func testSigmaPerLevelIsTheCalibratedValue() {
+        let p = FoldParameters()
+        XCTAssertEqual(p.sigmaPerLevel, 0.29, accuracy: 1e-9,
+                       "sigmaPerLevel 是实测标定值（tools/sigma-calibrate.swift）。"
+                       + "改动它会让 maxRadiusPt 的单位失真，必须同步标定表与文档。")
+        XCTAssertTrue(FoldParameters.validRanges["sigmaPerLevel"]!.contains(p.sigmaPerLevel),
+                      "标定值必须落在 validRanges 内（否则存档会被判非法）")
+        for preset in FoldPreset.allCases {
+            XCTAssertEqual(preset.parameters.sigmaPerLevel, 0.29, accuracy: 1e-9,
+                           "\(preset.rawValue) 应使用同一个校准常数")
+        }
+    }
+
+    /// σ ↔ mip 级别的映射是着色器公式的镜像，必须自洽且单调。
+    func testSigmaToLodMappingIsMonotonicAndInvertible() {
+        let p = FoldPreset.duoSweep.parameters
+        let levels = 12
+
+        // lod 对 σ 单调不减
+        var previous = -Double.infinity
+        for sigma in stride(from: 0.5, through: 600.0, by: 0.5) {
+            let lod = p.lod(forSigmaPx: sigma, levels: levels)
+            XCTAssertGreaterThanOrEqual(lod, previous - 1e-12, "lod 应对 σ 单调不减（σ=\(sigma)）")
+            previous = lod
+        }
+
+        // lod 被夹在 [0, levels-1]
+        XCTAssertEqual(p.lod(forSigmaPx: 1e-6, levels: levels), 0, accuracy: 1e-12)
+        XCTAssertEqual(p.lod(forSigmaPx: 1e6, levels: levels), Double(levels - 1), accuracy: 1e-12)
+
+        // 往返：lod → σ → lod 自洽
+        for lod in stride(from: 0.0, through: Double(levels - 1), by: 1.0) {
+            let sigma = p.sigmaPx(atLevel: lod)
+            XCTAssertEqual(p.lod(forSigmaPx: sigma, levels: levels), lod, accuracy: 1e-9,
+                           "lod=\(lod) 往返应自洽")
+        }
+
+        // 铰链处（σ → 0）必须落到第 0 级，这是"清晰区绝对清晰"的前提
+        XCTAssertLessThan(p.sigmaPx(atLevel: 0), FoldParameters.sharpSigmaThresholdPx,
+                          "第 0 级的 σ 应低于锐利短路阈值，否则铰链处会蒙一层薄雾")
+    }
+
+    /// 层数必须够表达 `maxRadiusPt` 的可调上限，否则请求会被静默夹住。
+    ///
+    /// 这是修复前的真实缺陷：层数硬编码 10，而 10 层在 σ_PL=0.29 下只能表达 148px，
+    /// 覆盖不到 200pt（2× 屏 = 400px）的上限 —— 表现为"半径拉到最大也不够糊"。
+    func testPyramidLevelsCoverMaxRadiusUpperBound() {
+        let sigmaPerLevel = FoldParameters().sigmaPerLevel
+        let upper = FoldParameters.validRanges["maxRadiusPt"]!.upperBound
+
+        for scale in [1.0, 2.0, 3.0] {
+            let levels = FoldParameters.requiredPyramidLevels(
+                maxRadiusPt: upper, scale: scale, sigmaPerLevel: sigmaPerLevel
+            )
+            let maxSigma = FoldParameters.maxRepresentableSigmaPx(
+                levels: levels, sigmaPerLevel: sigmaPerLevel
+            )
+            XCTAssertGreaterThanOrEqual(maxSigma, upper * scale * 0.999,
+                                        "scale=\(scale) 时 \(levels) 层应能表达 \(upper)pt")
+            // 也不该过度分配（多于实际需要一层以上）
+            let oneFewer = FoldParameters.maxRepresentableSigmaPx(
+                levels: levels - 1, sigmaPerLevel: sigmaPerLevel
+            )
+            XCTAssertLessThan(oneFewer, upper * scale,
+                              "scale=\(scale) 时层数不应过度分配")
+        }
+
+        // 纹理尺寸约束仍然生效（小的纹理不能要太多层）
+        let clamped = FoldParameters.requiredPyramidLevels(
+            maxRadiusPt: upper, scale: 2, sigmaPerLevel: sigmaPerLevel, maxLevelsForTexture: 6
+        )
+        XCTAssertEqual(clamped, 6, "应被纹理允许的层数夹住")
+
+        // 默认路径（DisplayInventory 用的那个）覆盖 2× Retina
+        XCTAssertGreaterThanOrEqual(FoldParameters.requiredPyramidLevelsForMaxRadius(scale: 2), 12,
+                                    "2× 屏至少需要 12 层才够 200pt")
+    }
+
+    /// 退化输入不应崩溃或产生非法层数
+    func testPyramidLevelsDegenerateInputs() {
+        XCTAssertEqual(FoldParameters.requiredPyramidLevels(
+            maxRadiusPt: 0, scale: 2, sigmaPerLevel: 0.29), 1)
+        XCTAssertEqual(FoldParameters.requiredPyramidLevels(
+            maxRadiusPt: 100, scale: 0, sigmaPerLevel: 0.29), 1)
+        XCTAssertEqual(FoldParameters.requiredPyramidLevels(
+            maxRadiusPt: 100, scale: 2, sigmaPerLevel: 0), 1)
+        XCTAssertEqual(FoldParameters.requiredPyramidLevels(
+            maxRadiusPt: 100, scale: 2, sigmaPerLevel: 0.29, maxLevelsForTexture: 0), 1)
     }
 }

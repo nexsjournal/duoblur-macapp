@@ -81,25 +81,107 @@ public struct FoldParameters: Sendable, Equatable, Hashable, Codable {
 
     // MARK: 渲染校准常数
 
-    /// 金字塔每提升一级所增加的 σ（以 level-0 像素为单位）。
+    /// 金字塔每提升一级所增加的 σ（以 **level-0 像素** 为单位）。
     ///
-    /// **这是实测校准值，不是推导值。** 教科书式的 2×2 box 链按方差叠加，系数应在
-    /// 0.29~0.33 之间（3×3 二项式给 level 0 贡献 σ≈0.707px）；但实测比这个推导值大了
-    /// 一倍以上，说明 `MTLBlitCommandEncoder.generateMipmaps` 的实际滤波行为与教科书上的
-    /// box 链不同，所以只能直接实测，不能照公式推。
+    /// 着色器用它把"目标模糊半径"换成 mip 级别：`lod = log2(σ / sigmaPerLevel)`，
+    /// 所以这个常数直接决定"125pt 到底有多糊"，是全项目唯一需要**实测标定**的常数。
     ///
-    /// **当前值 0.90 仍是未正式标定的估计，不要当成权威数字。**
+    /// ## 值：0.29（2026-09-15 实测标定完成）
     ///
-    /// 正式标定的做法：
-    /// - 专门的测试图案：**大块阶跃边缘 + 充裕边距**（边距 ≥ 6σ_max），阶跃两侧各 1500px 以上
-    /// - 用边缘扩散函数（ESF）求导得线扩散函数（LSF），对 LSF 做高斯拟合求 σ
-    /// - 在 σ = 2/4/8/16/32/64/128/256px 上逐点扫描测量
-    /// - 顺带确认 `radius < 0.75` 的锐利短路确实逐像素一致
+    /// **这是实测值。** 测量装置见 `tools/sigma-calibrate.swift`，并已固化为
+    /// `DuoBlurRenderTests/SigmaCalibrationTests`（T-3.2）。方法：
+    ///
+    /// 1. 造 16384×512 的纯黑白阶跃，两侧各留 8192px 边距（≥ 6σ_max）
+    /// 2. 跑**真实的** prepass + `generateMipmaps` + `composite` 着色器（不是替身）
+    /// 3. 取水平 ESF → **带符号**差分得 LSF → 二阶中心矩求 σ
+    /// 4. 扫遍 σ = 2…400px，拟合出 `σ_实测 ≈ 0.29 · 2^lod`
+    ///
+    /// 实测复核（levels=12、sigmaPerLevel=0.29）：
+    ///
+    /// | 目标 σ(px) | 实测 σ(px) | 比值 |
+    /// |---|---|---|
+    /// | 8 | 8.49 | 1.06 |
+    /// | 32 | 32.74 | 1.02 |
+    /// | 125 | 127.05 | 1.02 |
+    /// | 250 | 254.05 | 1.02 |
+    /// | 400 | 408.97 | 1.02 |
+    ///
+    /// σ ≥ 4px 全部落在 **±10%** 以内（最大 7.2%）。σ < 4px 时因 mip level 0 自身
+    /// 那次二项式模糊而略过糊（σ=2px 实测 2.35px，+17%），但该区间紧邻
+    /// `sharpSigmaThresholdPx` 的锐利短路，不影响观感。
+    ///
+    /// ## 为什么曾经是 0.90
+    ///
+    /// 教科书式的 2×2 box 链按方差叠加推导出 0.29~0.33，与实测吻合。但代码里长期填的是
+    /// **0.90**（一个未标定的估计），后果是**实际模糊半径只有请求值的约 0.32 倍** ——
+    /// 即 `maxRadiusPt = 125` 实际只有约 40pt。这正是一直怀疑的"偏离设计值约 2~3 倍"。
+    ///
+    /// 三次"简化标定"为何失败（详见 docs/08 §4.1）：
+    /// - 测试图案的色块只有 600px 宽，σ 到 65–165px 时相邻边缘互相污染
+    /// - 写成 `max(0, LSF)` 累加，让 ±1 LSB 抖动噪声被**单向**累加 → 理想硬边被测成 σ≈1.7px
+    /// - 固定宽窗会把平坦区噪声方差（噪声质量 × 距质心距离²，随窗宽平方增长）算进去 → 窄核严重高估
+    /// - 10-90% → σ 的换算系数 2.563 假设高斯核，而 box 链核更尖
+    ///
+    /// 结论：**先造合格的测量装置，再动校准常数。**
     public var sigmaPerLevel: Double
+
+    /// 锐利短路阈值（像素）：σ 小于它时直接采样捕获原图，保证铰链侧逐像素清晰。
+    /// 着色器里有同一个字面量（`DuoFold.metal` 的 `sigma < 0.75`）。
+    public static let sharpSigmaThresholdPx = 0.75
+
+    /// 由 mip 级别反推该级的 σ（像素）。着色器公式的 Swift 镜像。
+    public func sigmaPx(atLevel level: Double) -> Double {
+        sigmaPerLevel * pow(2, level)
+    }
+
+    /// 给定目标 σ（像素）所需的 mip 级别，夹在 `[0, levels-1]`。着色器公式的 Swift 镜像。
+    public func lod(forSigmaPx sigmaPx: Double, levels: Int) -> Double {
+        guard sigmaPx > 0, sigmaPerLevel > 0, levels >= 1 else { return 0 }
+        return AngleUtils.clamp(log2(sigmaPx / sigmaPerLevel), 0, Double(levels - 1))
+    }
+
+    /// 给定层数能表达的最大 σ（像素）：`sigmaPerLevel · 2^(levels-1)`。
+    public static func maxRepresentableSigmaPx(levels: Int, sigmaPerLevel: Double) -> Double {
+        guard levels >= 1 else { return 0 }
+        return sigmaPerLevel * pow(2, Double(levels - 1))
+    }
+
+    /// 要把 `maxRadiusPt` 表述到位，金字塔至少需要几层。
+    ///
+    /// 存在的理由：层数原先硬编码为 10，而 10 层在 σ_PL=0.29 下只能表达
+    /// `0.29·2^9 = 148px = 74pt@2x`，**覆盖不到 `validRanges` 里 200pt 的上限** ——
+    /// 表现为"半径拉到最大也不够糊"（请求被静默夹住）。
+    ///
+    /// - Parameters:
+    ///   - maxRadiusPt: 需要能表达的半径上限（pt）；传 `validRanges["maxRadiusPt"]` 的上界即可。
+    ///   - scale: 每 pt 的像素数（Retina 上为 2）。
+    ///   - sigmaPerLevel: 校准常数。
+    ///   - maxLevelsForTexture: 纹理尺寸允许的层数上限（`floor(log2(max(w,h)))+1`）。
+    @inlinable
+    public static func requiredPyramidLevels(
+        maxRadiusPt: Double,
+        scale: Double,
+        sigmaPerLevel: Double,
+        maxLevelsForTexture: Int = .max
+    ) -> Int {
+        guard maxRadiusPt > 0, scale > 0, sigmaPerLevel > 0 else { return 1 }
+        let needed = Int(ceil(log2(maxRadiusPt * scale / sigmaPerLevel))) + 1
+        return max(1, min(needed, max(1, maxLevelsForTexture)))
+    }
+
+    /// 要把 `validRanges` 允许的最大半径表述到位需要几层（默认校准常数）。
+    /// `DisplayInventory` 用它决定金字塔层数，而不是硬编码。
+    public static func requiredPyramidLevelsForMaxRadius(scale: Double) -> Int {
+        requiredPyramidLevels(
+            maxRadiusPt: validRanges["maxRadiusPt"]?.upperBound ?? 200,
+            scale: scale,
+            sigmaPerLevel: FoldParameters().sigmaPerLevel
+        )
+    }
 
     public init(
         spatialMode: SpatialMode = .sweep,
-        maxRadiusPt: Double = 125,
+        maxRadiusPt: Double = 40,
         blurFloor: Double = 0,
         rampKnee: Double = 0.85,
         rampExp: Double = 1.25,
@@ -112,7 +194,7 @@ public struct FoldParameters: Sendable, Equatable, Hashable, Codable {
         reflection: Double = 1.0,
         topInsetPt: Double = 0,
         fullFrostAt: Double? = nil,
-        sigmaPerLevel: Double = 0.90
+        sigmaPerLevel: Double = 0.29
     ) {
         self.spatialMode = spatialMode
         self.maxRadiusPt = maxRadiusPt
@@ -144,7 +226,7 @@ public struct FoldParameters: Sendable, Equatable, Hashable, Codable {
         "grazingStrength": 0...0.5,
         "reflection": 0...1,
         "topInsetPt": 0...120,
-        "sigmaPerLevel": 0.4...2.0,
+        "sigmaPerLevel": 0.15...2.0,
     ]
 
     /// 返回所有越界字段的说明。空数组表示合法。

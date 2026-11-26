@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CoreGraphics
+import DuoBlurCore
 
 /// 一台显示器的全部相关几何。
 ///
@@ -24,13 +25,23 @@ public struct DisplayInfo: Identifiable, Hashable, Sendable {
 
     public var pixelCount: Int { Int(pixelSize.width * pixelSize.height) }
 
-    /// 金字塔层数：够表达最大模糊半径即可，并能被 `FoldParameters` 的上限约束。
+    /// 金字塔层数：由"需要表达的最大模糊半径"推导，而不是硬编码。
     ///
-    /// 需要 `σ_max = sigmaPerLevel · 2^(levels-1)` 覆盖 `maxRadiusPt · scale`
-    /// （200pt × 2 = 400px）。σ 每级 0.9 时需要 log2(400/0.9) ≈ 8.8 → 10 层。
+    /// 关系是 `σ_max = sigmaPerLevel · 2^(levels-1)`，其中 `sigmaPerLevel` 是
+    /// **实测标定值 0.29**（见 `FoldParameters.sigmaPerLevel`）。
+    ///
+    /// 为什么不能写死 10：10 层在 σ_PL=0.29 下只能表达 `0.29·2^9 ≈ 148px`，
+    /// 而 `maxRadiusPt` 的可调上限是 200pt（2× 屏上 = 400px）——
+    /// **请求会被静默夹住，表现为"半径拉到最大也不够糊"**。
+    /// 按上限推导需要 `ceil(log2(400/0.29))+1 = 12` 层。
+    ///
+    /// 多出来的层几乎不增加成本：mip 链是几何级数，10→12 只多两级极小的纹理，
+    /// 采样仍是一次纹理读取，`generateMipmaps` 也是同一个 blit。
+    ///
+    /// `FoldRenderer.ensurePyramid` 仍会按纹理尺寸再夹一次（`floor(log2(max(w,h)))+1`），
+    /// 那是防止 `MTLTextureDescriptor` 校验直接 abort 的兜底，与本函数互补。
     public var pyramidLevels: Int {
-        let needed = Int(ceil(log2(max(pixelSize.width, pixelSize.height)))) + 1
-        return max(1, min(10, needed))
+        FoldParameters.requiredPyramidLevelsForMaxRadius(scale: scale)
     }
 }
 

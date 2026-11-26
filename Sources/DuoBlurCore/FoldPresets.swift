@@ -4,6 +4,18 @@ import Foundation
 ///
 /// 单测 `FoldParametersTests.testPresetsMatchExpectedValues` 会断言预设参数
 /// 与这里的取值一致——改代码忘了同步会被测试拦住。
+///
+/// ## `maxRadiusPt` 为什么在 2026-09-15 集体变小
+///
+/// σ 标定（见 `FoldParameters.sigmaPerLevel` 的文档）发现 `sigmaPerLevel` 长期填的是
+/// 未标定的 **0.90**，实测值是 **0.29** —— 于是**实际模糊半径只有请求值的约 0.32 倍**：
+/// 名义 `125pt` 实际只有约 40pt。
+///
+/// 常数修正到 0.29 后，`maxRadiusPt` 才真正等于"最终看到多少 pt 的模糊"。
+/// 为了**不改变已经过验收的观感**，四个预设按实测比例 0.32 同比缩放
+/// （125→40、90→29、160→51），使**实际渲染结果与修正前一致**。
+///
+/// 想要设计文档原本写的更重模糊（125pt）现在直接把滑杆拉上去即可——数值已经是诚实的了。
 public enum FoldPreset: String, Sendable, CaseIterable, Codable {
     /// **默认。** 折痕随转头在屏幕上移动，模糊从自由边长出。
     case duoSweep
@@ -37,7 +49,7 @@ public enum FoldPreset: String, Sendable, CaseIterable, Codable {
         case .duoSweep:
             return FoldParameters(
                 spatialMode: .sweep,
-                maxRadiusPt: 125,
+                maxRadiusPt: 40,
                 blurFloor: 0.0,
                 rampKnee: 0.85,
                 rampExp: 1.25,
@@ -57,7 +69,7 @@ public enum FoldPreset: String, Sendable, CaseIterable, Codable {
         case .duoClassic:
             return FoldParameters(
                 spatialMode: .ramp,
-                maxRadiusPt: 125,
+                maxRadiusPt: 40,
                 blurFloor: 0.0,
                 rampKnee: 0.85,
                 rampExp: 1.25,
@@ -75,7 +87,7 @@ public enum FoldPreset: String, Sendable, CaseIterable, Codable {
         case .frost:
             return FoldParameters(
                 spatialMode: .uniform,
-                maxRadiusPt: 90,
+                maxRadiusPt: 29,
                 blurFloor: 0.0,
                 // uniform 模式下 knee/exp 不参与运算，填中性值以保持结构可比对
                 rampKnee: 1.0,
@@ -95,7 +107,7 @@ public enum FoldPreset: String, Sendable, CaseIterable, Codable {
         case .cinematic:
             return FoldParameters(
                 spatialMode: .sweep,
-                maxRadiusPt: 160,
+                maxRadiusPt: 51,
                 blurFloor: 0.25,
                 rampKnee: 0.80,
                 rampExp: 1.10,
